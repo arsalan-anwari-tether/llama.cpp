@@ -1,0 +1,6 @@
+{
+  "Exclude": ["^\\.gitmodules$", "stb_image\\.h", "^vendor/"],
+  "Disable": {
+    "IndentSize": true
+  }
+}
