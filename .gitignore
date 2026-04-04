@@ -137,6 +137,4 @@ poetry.toml
 # emscripten
 a.out.*
 
-
-results/
 logs/
