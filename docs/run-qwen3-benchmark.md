@@ -219,7 +219,30 @@ On some mobile GPUs (e.g., Mali-G715 and similar ARM GPUs), these features may n
 GGML_ASSERT(ctx->descriptor_sets.size()) failed
 ```
 
-When such errors occur, the script automatically logs detailed diagnostic information to `**error.log**` in the current working directory (where you ran the script from), including:
+#### Automatic GPU detection
+
+The script automatically detects Mali GPUs and applies workarounds by setting:
+
+- `GGML_VK_DISABLE_COOPMAT=1` — Disables cooperative matrix operations
+- `GGML_VK_DISABLE_GRAPH_OPTIMIZE=1` — Disables graph optimization
+
+When running on a detected Mali GPU, you'll see:
+
+```
+note: Detected Mali (detected via sysfs) - applying Vulkan workarounds for hybrid models
+  -> Set GGML_VK_DISABLE_COOPMAT=1 (override with GGML_VK_DISABLE_COOPMAT=0)
+  -> Set GGML_VK_DISABLE_GRAPH_OPTIMIZE=1 (override with GGML_VK_DISABLE_GRAPH_OPTIMIZE=0)
+```
+
+To override the auto-detection (e.g., to test without workarounds), explicitly set the variables:
+
+```bash
+GGML_VK_DISABLE_COOPMAT=0 GGML_VK_DISABLE_GRAPH_OPTIMIZE=0 ./scripts/run_qwen3_benchmark.sh ...
+```
+
+#### Error logging
+
+When Vulkan errors occur, the script automatically logs detailed diagnostic information to `**error.log**` in the current working directory (where you ran the script from), including:
 
 - Full command that was executed
 - Complete stderr output

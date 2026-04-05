@@ -49,6 +49,61 @@ LLAMA_CLI="${LLAMA_CLI:-$ROOT/build/bin/llama-cli}"
 : "${LOGIC_CTX_SIZE:=4096}"
 : "${LOGIC_UBATCH_SIZE:=256}"
 
+# Auto-detect problematic GPUs and apply workarounds
+# Mali GPUs (ARM) have issues with cooperative matrix and hybrid models like Qwen3.5
+detect_gpu_workarounds() {
+  local gpu_name=""
+  local needs_workaround=false
+
+  # Method 1: Check for Mali GPU via /sys filesystem (Android/Linux)
+  if [[ -d /sys/class/devfreq ]] && ls /sys/class/devfreq/ 2>/dev/null | grep -qi mali; then
+    gpu_name="Mali (detected via sysfs)"
+    needs_workaround=true
+  fi
+
+  # Method 2: Check via vulkaninfo if available
+  if [[ -z "$gpu_name" ]] && command -v vulkaninfo >/dev/null 2>&1; then
+    local vk_info
+    vk_info="$(vulkaninfo --summary 2>/dev/null || true)"
+    if echo "$vk_info" | grep -qi "mali"; then
+      gpu_name="Mali (detected via vulkaninfo)"
+      needs_workaround=true
+    elif echo "$vk_info" | grep -qi "adreno"; then
+      # Adreno GPUs (Qualcomm) may also have issues - monitor but don't auto-disable yet
+      gpu_name="Adreno (detected via vulkaninfo)"
+      # needs_workaround=true  # Uncomment if Adreno also has issues
+    fi
+  fi
+
+  # Method 3: Check Android device info
+  if [[ -z "$gpu_name" ]] && [[ -f /system/build.prop || -d /data/data/com.termux ]]; then
+    # On Android/Termux, check for common Mali device patterns
+    if [[ -d /sys/devices ]] && find /sys/devices -maxdepth 4 -name "mali*" 2>/dev/null | grep -q .; then
+      gpu_name="Mali (detected via /sys/devices)"
+      needs_workaround=true
+    fi
+  fi
+
+  if [[ "$needs_workaround" == "true" ]]; then
+    echo "note: Detected $gpu_name - applying Vulkan workarounds for hybrid models" >&2
+
+    # Disable cooperative matrix if not explicitly set
+    if [[ -z "${GGML_VK_DISABLE_COOPMAT+x}" ]]; then
+      export GGML_VK_DISABLE_COOPMAT=1
+      echo "  -> Set GGML_VK_DISABLE_COOPMAT=1 (override with GGML_VK_DISABLE_COOPMAT=0)" >&2
+    fi
+
+    # Disable graph optimization if not explicitly set
+    if [[ -z "${GGML_VK_DISABLE_GRAPH_OPTIMIZE+x}" ]]; then
+      export GGML_VK_DISABLE_GRAPH_OPTIMIZE=1
+      echo "  -> Set GGML_VK_DISABLE_GRAPH_OPTIMIZE=1 (override with GGML_VK_DISABLE_GRAPH_OPTIMIZE=0)" >&2
+    fi
+  fi
+}
+
+# Run GPU detection
+detect_gpu_workarounds
+
 DEFAULT_LOGIC_CLI_EXTRA_THINK="--temp 1.0 --top-k 20 --top-p 0.95 --min-p 0 --repeat-penalty 1.0 --presence-penalty 1.5"
 DEFAULT_LOGIC_CLI_EXTRA_NO_THINK="--temp 0.7 --top-k 20 --top-p 0.8 --min-p 0 --repeat-penalty 1.0 --presence-penalty 1.5"
 
