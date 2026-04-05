@@ -206,11 +206,63 @@ run_one() {
   cmd+=(-o json)
 
   echo "==> $label: $(basename "$model_path") -> $out_json" >&2
-  if ! "${cmd[@]}" >"$out_json"; then
-    echo "error: llama-bench failed for $model_path ($label) model arch not supported!" >&2
+  local tmp_stderr
+  tmp_stderr="$(mktemp)"
+  if ! "${cmd[@]}" >"$out_json" 2>"$tmp_stderr"; then
+    local err_output
+    err_output="$(cat "$tmp_stderr" 2>/dev/null || true)"
+    rm -f "$tmp_stderr"
+
+    local error_log="error.log"
+    local is_vulkan_error=false
+
+    # Check for specific Vulkan/GPU errors
+    if [[ "$label" == "vulkan" ]] && echo "$err_output" | grep -qiE "GGML_ASSERT|vulkan|descriptor_set|Vulkan"; then
+      is_vulkan_error=true
+      echo "error: llama-bench failed for $model_path ($label) - Vulkan backend error (model may not be fully supported on this GPU)" >&2
+      echo "  Hint: Hybrid models (Qwen3.5, Mamba, etc.) may require GPU features not available on all devices." >&2
+      echo "  Try running with CPU only: --bench-mode=inference -- --device none -ngl 0" >&2
+      echo "  Full error logged to: $error_log" >&2
+    else
+      echo "error: llama-bench failed for $model_path ($label)" >&2
+    fi
+
+    if [[ -n "$err_output" ]]; then
+      echo "  stderr: ${err_output:0:500}" >&2
+    fi
+
+    # Write detailed error to error.log for analysis
+    {
+      echo "========================================================================"
+      echo "ERROR REPORT - $(date -Iseconds 2>/dev/null || date)"
+      echo "========================================================================"
+      echo "Model: $model_path"
+      echo "Backend: $label"
+      echo "Output file: $out_json"
+      echo "Vulkan error detected: $is_vulkan_error"
+      echo ""
+      echo "Command:"
+      printf '  %q ' "${cmd[@]}"
+      echo ""
+      echo ""
+      echo "Environment:"
+      echo "  LLAMA_BENCH=$LLAMA_BENCH"
+      echo "  BENCH_P=$BENCH_P BENCH_N=$BENCH_N BENCH_R=$BENCH_R"
+      if command -v uname >/dev/null 2>&1; then
+        echo "  System: $(uname -a)"
+      fi
+      echo ""
+      echo "Full stderr output:"
+      echo "------------------------------------------------------------------------"
+      echo "$err_output"
+      echo "------------------------------------------------------------------------"
+      echo ""
+    } >> "$error_log"
+
     FAILURES=$((FAILURES + 1))
     return 1
   fi
+  rm -f "$tmp_stderr"
   return 0
 }
 

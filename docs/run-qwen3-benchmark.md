@@ -206,6 +206,46 @@ LOGIC_CTX_SIZE=2048 LOGIC_UBATCH_SIZE=128 ./scripts/run_qwen3_benchmark.sh --inp
 
 If the device crashes during "Loading model..." in the logic phase, reduce `LOGIC_CTX_SIZE` further or use a smaller quantized model.
 
+### Vulkan limitations with hybrid models (Qwen3.5)
+
+Qwen3.5 models use a hybrid architecture combining transformer attention layers with linear attention (Gated Delta Net) layers. The Vulkan backend implementation of the Gated Delta Net operation (`GGML_OP_GATED_DELTA_NET`) requires specific GPU features:
+
+- Subgroup arithmetic operations
+- Full subgroup support (`computeFullSubgroups`)
+
+On some mobile GPUs (e.g., Mali-G715 and similar ARM GPUs), these features may not be fully available, causing Vulkan inference to fail with assertion errors like:
+
+```
+GGML_ASSERT(ctx->descriptor_sets.size()) failed
+```
+
+When such errors occur, the script automatically logs detailed diagnostic information to `**error.log**` in the current working directory (where you ran the script from), including:
+
+- Full command that was executed
+- Complete stderr output
+- System information
+- Timestamps
+
+This file can be shared for debugging and analysis.
+
+**Workarounds:**
+
+1. **Run inference-only benchmarks on CPU:**
+
+```bash
+./scripts/run_qwen3_benchmark.sh --input-dir=/path/to/gguf --bench-mode=inference -- --device none -ngl 0
+```
+
+2. **Skip Vulkan benchmarks entirely** by only running logic tests (which already include both CPU and Vulkan tests, with Vulkan failures reported gracefully):
+
+```bash
+./scripts/run_qwen3_benchmark.sh --input-dir=/path/to/gguf --bench-mode=logic
+```
+
+3. **Use Qwen3 models instead of Qwen3.5** — Qwen3 uses standard transformer architecture without the hybrid linear attention layers and has broader GPU compatibility.
+
+Note: This limitation is specific to the Gated Delta Net operation used in Qwen3.5, Kimi-Linear, and similar hybrid-architecture models. Standard Qwen3 and other transformer-only models should work normally with Vulkan on these devices.
+
 ## See also
 
 - `[docs/qwen3-llama-run.md](qwen3-llama-run.md)` — Single-model Qwen3 helper for `llama-cli` / `llama-bench`
