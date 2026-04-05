@@ -221,12 +221,17 @@ GGML_ASSERT(ctx->descriptor_sets.size()) failed
 
 #### Automatic GPU detection
 
-The script automatically detects Mali GPUs and applies workarounds by setting:
+The script automatically detects problematic mobile GPUs and applies appropriate workarounds:
 
+**Mali GPUs (ARM — e.g., Pixel phones):**
 - `GGML_VK_DISABLE_COOPMAT=1` — Disables cooperative matrix operations
 - `GGML_VK_DISABLE_GRAPH_OPTIMIZE=1` — Disables graph optimization
 
-When running on a detected Mali GPU, you'll see:
+**Adreno GPUs (Qualcomm — e.g., Samsung Galaxy S series):**
+- `GGML_VK_DISABLE_ASYNC=1` — Disables async execution (prevents `VK_ERROR_DEVICE_LOST`)
+- `GGML_VK_DISABLE_GRAPH_OPTIMIZE=1` — Disables graph optimization
+
+When running on a detected GPU, you'll see output like:
 
 ```
 note: Detected Mali (detected via sysfs) - applying Vulkan workarounds for hybrid models
@@ -234,10 +239,22 @@ note: Detected Mali (detected via sysfs) - applying Vulkan workarounds for hybri
   -> Set GGML_VK_DISABLE_GRAPH_OPTIMIZE=1 (override with GGML_VK_DISABLE_GRAPH_OPTIMIZE=0)
 ```
 
+or for Adreno:
+
+```
+note: Detected Adreno (detected via kgsl sysfs) - applying Vulkan workarounds for hybrid models
+  -> Set GGML_VK_DISABLE_ASYNC=1 (override with GGML_VK_DISABLE_ASYNC=0)
+  -> Set GGML_VK_DISABLE_GRAPH_OPTIMIZE=1 (override with GGML_VK_DISABLE_GRAPH_OPTIMIZE=0)
+```
+
 To override the auto-detection (e.g., to test without workarounds), explicitly set the variables:
 
 ```bash
+# For Mali
 GGML_VK_DISABLE_COOPMAT=0 GGML_VK_DISABLE_GRAPH_OPTIMIZE=0 ./scripts/run_qwen3_benchmark.sh ...
+
+# For Adreno
+GGML_VK_DISABLE_ASYNC=0 GGML_VK_DISABLE_GRAPH_OPTIMIZE=0 ./scripts/run_qwen3_benchmark.sh ...
 ```
 
 #### Error logging
