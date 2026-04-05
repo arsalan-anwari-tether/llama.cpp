@@ -524,6 +524,7 @@ struct common_params {
     bool escape            = true;  // escape "\n", "\r", "\t", "\'", "\"", and "\\"
     bool multiline_input   = false; // reverse the usage of `\`
     bool simple_io         = false; // improves compatibility with subprocesses and limited consoles
+    bool quiet             = false; // suppress all console UI output (banner, loading, commands) - only model response to stdout
     bool cont_batching     = true;  // insert new sequences for decoding on-the-fly
     bool no_perf           = false; // disable performance metrics
     bool show_timings      = true;  // show timing information on CLI

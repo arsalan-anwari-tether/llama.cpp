@@ -57,6 +57,7 @@ struct cli_context {
     std::vector<raw_buffer> input_files;
     task_params defaults;
     bool verbose_prompt;
+    bool quiet;
     int reasoning_budget = -1;
     std::string reasoning_budget_message;
 
@@ -75,6 +76,7 @@ struct cli_context {
         // defaults.return_progress = true; // TODO: show progress
 
         verbose_prompt = params.verbose_prompt;
+        quiet = params.quiet;
         reasoning_budget = params.reasoning_budget;
         reasoning_budget_message = params.reasoning_budget_message;
     }
@@ -386,16 +388,22 @@ int main(int argc, char ** argv) {
     SetConsoleCtrlHandler(reinterpret_cast<PHANDLER_ROUTINE>(console_ctrl_handler), true);
 #endif
 
-    console::log("\nLoading model... "); // followed by loading animation
-    console::spinner::start();
+    if (!ctx_cli.quiet) {
+        console::log("\nLoading model... "); // followed by loading animation
+        console::spinner::start();
+    }
     if (!ctx_cli.ctx_server.load_model(params)) {
-        console::spinner::stop();
+        if (!ctx_cli.quiet) {
+            console::spinner::stop();
+        }
         console::error("\nFailed to load the model\n");
         return 1;
     }
 
-    console::spinner::stop();
-    console::log("\n");
+    if (!ctx_cli.quiet) {
+        console::spinner::stop();
+        console::log("\n");
+    }
 
     std::thread inference_thread([&ctx_cli]() {
         ctx_cli.ctx_server.start_loop();
@@ -420,28 +428,30 @@ int main(int argc, char ** argv) {
     };
     add_system_prompt();
 
-    console::log("\n");
-    console::log("%s\n", LLAMA_ASCII_LOGO);
-    console::log("build      : %s\n", inf.build_info.c_str());
-    console::log("model      : %s\n", inf.model_name.c_str());
-    console::log("modalities : %s\n", modalities.c_str());
-    if (!params.system_prompt.empty()) {
-        console::log("using custom system prompt\n");
+    if (!ctx_cli.quiet) {
+        console::log("\n");
+        console::log("%s\n", LLAMA_ASCII_LOGO);
+        console::log("build      : %s\n", inf.build_info.c_str());
+        console::log("model      : %s\n", inf.model_name.c_str());
+        console::log("modalities : %s\n", modalities.c_str());
+        if (!params.system_prompt.empty()) {
+            console::log("using custom system prompt\n");
+        }
+        console::log("\n");
+        console::log("available commands:\n");
+        console::log("  /exit or Ctrl+C     stop or exit\n");
+        console::log("  /regen              regenerate the last response\n");
+        console::log("  /clear              clear the chat history\n");
+        console::log("  /read <file>        add a text file\n");
+        console::log("  /glob <pattern>     add text files using globbing pattern\n");
+        if (inf.has_inp_image) {
+            console::log("  /image <file>       add an image file\n");
+        }
+        if (inf.has_inp_audio) {
+            console::log("  /audio <file>       add an audio file\n");
+        }
+        console::log("\n");
     }
-    console::log("\n");
-    console::log("available commands:\n");
-    console::log("  /exit or Ctrl+C     stop or exit\n");
-    console::log("  /regen              regenerate the last response\n");
-    console::log("  /clear              clear the chat history\n");
-    console::log("  /read <file>        add a text file\n");
-    console::log("  /glob <pattern>     add text files using globbing pattern\n");
-    if (inf.has_inp_image) {
-        console::log("  /image <file>       add an image file\n");
-    }
-    if (inf.has_inp_audio) {
-        console::log("  /audio <file>       add an audio file\n");
-    }
-    console::log("\n");
 
     // interactive loop
     std::string cur_msg;
@@ -462,7 +472,9 @@ int main(int argc, char ** argv) {
             cur_msg += " ---\n";
         }
         cur_msg += marker;
-        console::log("Loaded text from '%s'\n", fname.c_str());
+        if (!ctx_cli.quiet) {
+            console::log("Loaded text from '%s'\n", fname.c_str());
+        }
         return true;
     };
 
@@ -470,7 +482,9 @@ int main(int argc, char ** argv) {
         std::string buffer;
         console::set_display(DISPLAY_TYPE_USER_INPUT);
         if (params.prompt.empty()) {
-            console::log("\n> ");
+            if (!ctx_cli.quiet) {
+                console::log("\n> ");
+            }
             std::string line;
             bool another_line = true;
             do {
@@ -485,19 +499,25 @@ int main(int argc, char ** argv) {
                     console::error("file does not exist or cannot be opened: '%s'\n", fname.c_str());
                     break;
                 }
-                console::log("Loaded media from '%s'\n", fname.c_str());
+                if (!ctx_cli.quiet) {
+                    console::log("Loaded media from '%s'\n", fname.c_str());
+                }
                 cur_msg += marker;
             }
             buffer = params.prompt;
-            if (buffer.size() > 500) {
-                console::log("\n> %s ... (truncated)\n", buffer.substr(0, 500).c_str());
-            } else {
-                console::log("\n> %s\n", buffer.c_str());
+            if (!ctx_cli.quiet) {
+                if (buffer.size() > 500) {
+                    console::log("\n> %s ... (truncated)\n", buffer.substr(0, 500).c_str());
+                } else {
+                    console::log("\n> %s\n", buffer.c_str());
+                }
             }
             params.prompt.clear(); // only use it once
         }
         console::set_display(DISPLAY_TYPE_RESET);
-        console::log("\n");
+        if (!ctx_cli.quiet) {
+            console::log("\n");
+        }
 
         if (should_stop()) {
             g_is_interrupted.store(false);
@@ -533,7 +553,9 @@ int main(int argc, char ** argv) {
             add_system_prompt();
 
             ctx_cli.input_files.clear();
-            console::log("Chat history cleared.\n");
+            if (!ctx_cli.quiet) {
+                console::log("Chat history cleared.\n");
+            }
             continue;
         } else if (
                 (string_starts_with(buffer, "/image ") && inf.has_inp_image) ||
@@ -546,7 +568,9 @@ int main(int argc, char ** argv) {
                 continue;
             }
             cur_msg += marker;
-            console::log("Loaded media from '%s'\n", fname.c_str());
+            if (!ctx_cli.quiet) {
+                console::log("Loaded media from '%s'\n", fname.c_str());
+            }
             continue;
         } else if (string_starts_with(buffer, "/read ")) {
             std::string fname = string_strip(buffer.substr(6));
@@ -624,9 +648,11 @@ int main(int argc, char ** argv) {
             {"role",    "assistant"},
             {"content", assistant_content}
         });
-        console::log("\n");
+        if (!ctx_cli.quiet) {
+            console::log("\n");
+        }
 
-        if (params.show_timings) {
+        if (params.show_timings && !ctx_cli.quiet) {
             console::set_display(DISPLAY_TYPE_INFO);
             console::log("\n");
             console::log("[ Prompt: %.1f t/s | Generation: %.1f t/s ]\n", timings.prompt_per_second, timings.predicted_per_second);
@@ -640,7 +666,9 @@ int main(int argc, char ** argv) {
 
     console::set_display(DISPLAY_TYPE_RESET);
 
-    console::log("\nExiting...\n");
+    if (!ctx_cli.quiet) {
+        console::log("\nExiting...\n");
+    }
     ctx_cli.ctx_server.terminate();
     inference_thread.join();
 

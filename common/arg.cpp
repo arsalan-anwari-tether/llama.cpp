@@ -3190,6 +3190,14 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         }
     ).set_examples({LLAMA_EXAMPLE_COMPLETION, LLAMA_EXAMPLE_CLI}));
     add_opt(common_arg(
+        {"-q", "--quiet"},
+        "suppress all console UI output (banner, loading message, available commands). "
+        "Only the model's response is written to stdout. Useful for scripting and automation.",
+        [](common_params & params) {
+            params.quiet = true;
+        }
+    ).set_examples({LLAMA_EXAMPLE_CLI}));
+    add_opt(common_arg(
         {"--positive-file"}, "FNAME",
         string_format("positive prompts file, one prompt per line (default: '%s')", params.cvector_positive_file.c_str()),
         [](common_params & params, const std::string & value) {
