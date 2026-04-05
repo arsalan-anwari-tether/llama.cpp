@@ -83,6 +83,8 @@ The default generation and memory limits are:
 - `LOGIC_CTX_SIZE=4096` — context size (prevents OOM on mobile/resource-constrained devices)
 - `LOGIC_UBATCH_SIZE=256` — micro-batch size (reduces memory pressure)
 
+The script uses `--no-display-prompt` to suppress prompt echoing, and applies post-processing to strip the llama-cli banner and UI elements (build info, available commands, etc.) so only the model's actual response is written to the markdown files.
+
 Each logic question is wrapped with the shell `timeout` command. If a run exceeds `LOGIC_TIMEOUT_SEC`, the script terminates that `llama-cli` process, records the partial stdout that was produced so far, and then continues to the next question.
 
 You can override the sampling flags with:

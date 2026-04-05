@@ -107,6 +107,19 @@ die() {
   exit 1
 }
 
+# Strip llama-cli banner/UI from stdout, keeping only the model response.
+# The header ends after the "available commands:" section (lines with /glob, /image, /audio)
+# followed by an empty line. Everything after that is the model's actual response.
+strip_cli_header() {
+  awk '
+    BEGIN { skip=1 }
+    /^\s+\/(glob|image|audio)/ { after_cmds=1; next }
+    after_cmds && /^[[:space:]]*$/ { skip=0; after_cmds=0; next }
+    skip { next }
+    { print }
+  '
+}
+
 is_inference_enabled() {
   [[ "$BENCH_MODE" == "all" || "$BENCH_MODE" == "inference" ]]
 }
@@ -223,7 +236,7 @@ run_logic_one() {
 
   local n_predict rbudget ngl logic_extra_value device_label timeout_note
   local logic_extra_arr=()
-  local cmd=("$LLAMA_CLI" -m "$model_path" --jinja -c "$LOGIC_CTX_SIZE" -ub "$LOGIC_UBATCH_SIZE")
+  local cmd=("$LLAMA_CLI" -m "$model_path" --jinja -c "$LOGIC_CTX_SIZE" -ub "$LOGIC_UBATCH_SIZE" --no-display-prompt)
   if [[ "$mode" == "think" ]]; then
     n_predict=$LOGIC_N_THINK
     rbudget=-1
@@ -271,6 +284,7 @@ run_logic_one() {
 | **Sampling flags** | \`${logic_extra_value}\` |
 | **Per-question timeout** | \`${LOGIC_TIMEOUT_SEC}s\` |
 | **Chat** | \`--jinja\`, \`--single-turn\` (each question: \`-p\` …) |
+| **Output mode** | \`--no-display-prompt\` (suppress prompt echo, banner stripped by script) |
 
 ## Command line (same for every question; only \`-p\` changes)
 
@@ -289,9 +303,11 @@ EOF
   for prompt in "${LOGIC_PROMPTS[@]}"; do
     echo "==> logic $backend $mode Question-${i}: $(basename "$model_path")" >&2
     set +e
-    answer="$(timeout --signal=TERM --kill-after=10s "${LOGIC_TIMEOUT_SEC}s" "${cmd[@]}" -p "$prompt" -n "$n_predict" "${logic_extra_arr[@]}" </dev/null 2>"$tmp_err")"
+    raw_answer="$(timeout --signal=TERM --kill-after=10s "${LOGIC_TIMEOUT_SEC}s" "${cmd[@]}" -p "$prompt" -n "$n_predict" "${logic_extra_arr[@]}" </dev/null 2>"$tmp_err")"
     ec=$?
     set -e
+    # Strip the llama-cli banner and UI, keep only the model's response
+    answer="$(printf '%s' "$raw_answer" | strip_cli_header)"
     err="$(cat "$tmp_err" || true)"
     timeout_note=""
     if (( ec == 124 )); then
@@ -311,10 +327,16 @@ EOF
         else
           printf '**llama-cli exited with code %s**\n\n' "$ec"
         fi
+        # For errors, show filtered output if available, otherwise raw output for debugging
         if [[ -n "$answer" ]]; then
           printf '#### Partial output\n\n'
           printf '````text\n\n'
           printf '%s\n' "$answer"
+          printf '\n````\n\n'
+        elif [[ -n "$raw_answer" ]]; then
+          printf '#### Raw output (header not stripped - crashed before completion)\n\n'
+          printf '````text\n\n'
+          printf '%s\n' "$raw_answer"
           printf '\n````\n\n'
         fi
         if [[ -n "$err" ]]; then
@@ -323,7 +345,7 @@ EOF
           printf '%s\n' "$err"
           printf '\n````\n\n'
         fi
-        if [[ -z "$answer" && -z "$err" ]]; then
+        if [[ -z "$answer" && -z "$raw_answer" && -z "$err" ]]; then
           printf '````text\n\n(no output captured)\n\n````\n\n'
         fi
       } >>"$out_md"
