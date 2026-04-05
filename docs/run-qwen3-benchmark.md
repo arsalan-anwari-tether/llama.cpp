@@ -17,7 +17,7 @@ The CPU mode is now a true CPU-only run because it uses `--device none`, not jus
 
 Under `**--output-dir`** (default: same as `--input-dir`), the script creates one subdirectory per model:
 
-- `**inference/<model>/cpu.json**`
+- `**inference/<model>/cpu.json`**
 - `**inference/<model>/vulkan.json**`
 - `**logic/<model>/cpu_think.md**`
 - `**logic/<model>/cpu_no_think.md**`
@@ -224,12 +224,15 @@ GGML_ASSERT(ctx->descriptor_sets.size()) failed
 The script automatically detects problematic mobile GPUs and applies appropriate workarounds:
 
 **Mali GPUs (ARM — e.g., Pixel phones):**
+
 - `GGML_VK_DISABLE_COOPMAT=1` — Disables cooperative matrix operations
 - `GGML_VK_DISABLE_GRAPH_OPTIMIZE=1` — Disables graph optimization
 
 **Adreno GPUs (Qualcomm — e.g., Samsung Galaxy S series):**
-- `GGML_VK_DISABLE_ASYNC=1` — Disables async execution (prevents `VK_ERROR_DEVICE_LOST`)
-- `GGML_VK_DISABLE_GRAPH_OPTIMIZE=1` — Disables graph optimization
+
+- Vulkan benchmarks are **automatically skipped** for hybrid models (Qwen3.5, Kimi-Linear, etc.)
+- The Adreno driver crashes with `VK_ERROR_DEVICE_LOST` when running Gated Delta Net shaders
+- CPU benchmarks still run normally
 
 When running on a detected GPU, you'll see output like:
 
@@ -276,13 +279,13 @@ This file can be shared for debugging and analysis.
 ./scripts/run_qwen3_benchmark.sh --input-dir=/path/to/gguf --bench-mode=inference -- --device none -ngl 0
 ```
 
-2. **Skip Vulkan benchmarks entirely** by only running logic tests (which already include both CPU and Vulkan tests, with Vulkan failures reported gracefully):
+1. **Skip Vulkan benchmarks entirely** by only running logic tests (which already include both CPU and Vulkan tests, with Vulkan failures reported gracefully):
 
 ```bash
 ./scripts/run_qwen3_benchmark.sh --input-dir=/path/to/gguf --bench-mode=logic
 ```
 
-3. **Use Qwen3 models instead of Qwen3.5** — Qwen3 uses standard transformer architecture without the hybrid linear attention layers and has broader GPU compatibility.
+1. **Use Qwen3 models instead of Qwen3.5** — Qwen3 uses standard transformer architecture without the hybrid linear attention layers and has broader GPU compatibility.
 
 Note: This limitation is specific to the Gated Delta Net operation used in Qwen3.5, Kimi-Linear, and similar hybrid-architecture models. Standard Qwen3 and other transformer-only models should work normally with Vulkan on these devices.
 

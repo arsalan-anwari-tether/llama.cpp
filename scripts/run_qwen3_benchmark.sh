@@ -108,23 +108,45 @@ detect_gpu_workarounds() {
       fi
       ;;
     adreno)
-      echo "note: Detected $gpu_name - applying Vulkan workarounds for hybrid models" >&2
-      # Adreno: Disable async execution (causes VK_ERROR_DEVICE_LOST with hybrid models)
-      if [[ -z "${GGML_VK_DISABLE_ASYNC+x}" ]]; then
-        export GGML_VK_DISABLE_ASYNC=1
-        echo "  -> Set GGML_VK_DISABLE_ASYNC=1 (override with GGML_VK_DISABLE_ASYNC=0)" >&2
-      fi
-      # Adreno: Disable graph optimization (may help with driver stability)
-      if [[ -z "${GGML_VK_DISABLE_GRAPH_OPTIMIZE+x}" ]]; then
-        export GGML_VK_DISABLE_GRAPH_OPTIMIZE=1
-        echo "  -> Set GGML_VK_DISABLE_GRAPH_OPTIMIZE=1 (override with GGML_VK_DISABLE_GRAPH_OPTIMIZE=0)" >&2
+      echo "note: Detected $gpu_name - Vulkan not supported for hybrid models (Qwen3.5, etc.)" >&2
+      echo "  -> Vulkan benchmarks will be skipped for hybrid models (use SKIP_VULKAN_HYBRID=0 to override)" >&2
+      # Mark that we should skip Vulkan for hybrid models on Adreno
+      # The Adreno driver crashes with VK_ERROR_DEVICE_LOST when running Gated Delta Net shaders
+      if [[ -z "${SKIP_VULKAN_HYBRID+x}" ]]; then
+        export SKIP_VULKAN_HYBRID=1
       fi
       ;;
   esac
+
+  # Export GPU type for use in other functions
+  export DETECTED_GPU_TYPE="$gpu_type"
 }
 
 # Run GPU detection
 detect_gpu_workarounds
+
+# Check if a model filename indicates a hybrid architecture (Qwen3.5, Kimi-Linear, etc.)
+# These models use Gated Delta Net which causes Vulkan driver crashes on some mobile GPUs
+is_hybrid_model() {
+  local model_name="$1"
+  # Match Qwen3.5 (not Qwen3), Kimi-Linear, and other known hybrid architectures
+  if echo "$model_name" | grep -qiE "qwen3\.5|qwen35|kimi.?linear"; then
+    return 0
+  fi
+  return 1
+}
+
+# Check if we should skip Vulkan for this model
+should_skip_vulkan() {
+  local model_path="$1"
+  local model_name
+  model_name="$(basename "$model_path")"
+
+  if [[ "${SKIP_VULKAN_HYBRID:-0}" == "1" ]] && is_hybrid_model "$model_name"; then
+    return 0
+  fi
+  return 1
+}
 
 DEFAULT_LOGIC_CLI_EXTRA_THINK="--temp 1.0 --top-k 20 --top-p 0.95 --min-p 0 --repeat-penalty 1.0 --presence-penalty 1.5"
 DEFAULT_LOGIC_CLI_EXTRA_NO_THINK="--temp 0.7 --top-k 20 --top-p 0.8 --min-p 0 --repeat-penalty 1.0 --presence-penalty 1.5"
@@ -476,18 +498,34 @@ EOF
 
 for f in "${GGUF_FILES[@]}"; do
   base="$(basename "$f" .gguf)"
+
+  # Check if we should skip Vulkan for this model (hybrid models on Adreno)
+  skip_vulkan=false
+  if should_skip_vulkan "$f"; then
+    skip_vulkan=true
+    echo "note: Skipping Vulkan benchmarks for $base (hybrid model on ${DETECTED_GPU_TYPE:-unknown} GPU)" >&2
+  fi
+
   if is_inference_enabled; then
     mkdir -p "${OUTPUT_DIR}/inference/${base}"
     run_one "$f" "${OUTPUT_DIR}/inference/${base}/cpu.json" cpu || true
-    run_one "$f" "${OUTPUT_DIR}/inference/${base}/vulkan.json" vulkan || true
+    if [[ "$skip_vulkan" == "false" ]]; then
+      run_one "$f" "${OUTPUT_DIR}/inference/${base}/vulkan.json" vulkan || true
+    else
+      echo "==> vulkan: $base SKIPPED (not supported on this GPU)" >&2
+    fi
   fi
 
   if is_logic_enabled; then
     mkdir -p "${OUTPUT_DIR}/logic/${base}"
     run_logic_one "$f" "${OUTPUT_DIR}/logic/${base}/cpu_think.md" cpu think "$base"
     run_logic_one "$f" "${OUTPUT_DIR}/logic/${base}/cpu_no_think.md" cpu no_think "$base"
-    run_logic_one "$f" "${OUTPUT_DIR}/logic/${base}/vulkan_think.md" vulkan think "$base"
-    run_logic_one "$f" "${OUTPUT_DIR}/logic/${base}/vulkan_no_think.md" vulkan no_think "$base"
+    if [[ "$skip_vulkan" == "false" ]]; then
+      run_logic_one "$f" "${OUTPUT_DIR}/logic/${base}/vulkan_think.md" vulkan think "$base"
+      run_logic_one "$f" "${OUTPUT_DIR}/logic/${base}/vulkan_no_think.md" vulkan no_think "$base"
+    else
+      echo "==> vulkan logic: $base SKIPPED (not supported on this GPU)" >&2
+    fi
   fi
 done
 
