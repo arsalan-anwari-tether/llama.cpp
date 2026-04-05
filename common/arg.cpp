@@ -3192,9 +3192,11 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
     add_opt(common_arg(
         {"-q", "--quiet"},
         "suppress all console UI output (banner, loading message, available commands). "
-        "Only the model's response is written to stdout. Useful for scripting and automation.",
+        "Only the model's response is written to stdout. Useful for scripting and automation. "
+        "Implies --simple-io to ensure output is not written directly to the terminal.",
         [](common_params & params) {
             params.quiet = true;
+            params.simple_io = true;
         }
     ).set_examples({LLAMA_EXAMPLE_CLI}));
     add_opt(common_arg(

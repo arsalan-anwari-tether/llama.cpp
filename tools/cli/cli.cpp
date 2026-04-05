@@ -155,22 +155,38 @@ struct cli_context {
                 for (const auto & diff : res_partial->oaicompat_msg_diffs) {
                     if (!diff.content_delta.empty()) {
                         if (is_thinking) {
-                            console::log("\n[End thinking]\n\n");
-                            console::set_display(DISPLAY_TYPE_RESET);
+                            if (quiet) {
+                                // In quiet mode, print directly to stdout for script capture
+                                fputs("\n", stdout);
+                            } else {
+                                console::log("\n[End thinking]\n\n");
+                                console::set_display(DISPLAY_TYPE_RESET);
+                            }
                             is_thinking = false;
                         }
                         curr_content += diff.content_delta;
-                        console::log("%s", diff.content_delta.c_str());
-                        console::flush();
+                        if (quiet) {
+                            // In quiet mode, print directly to stdout for script capture
+                            fputs(diff.content_delta.c_str(), stdout);
+                            fflush(stdout);
+                        } else {
+                            console::log("%s", diff.content_delta.c_str());
+                            console::flush();
+                        }
                     }
                     if (!diff.reasoning_content_delta.empty()) {
-                        console::set_display(DISPLAY_TYPE_REASONING);
-                        if (!is_thinking) {
-                            console::log("[Start thinking]\n");
+                        if (quiet) {
+                            // In quiet mode, skip reasoning display markers but still track state
+                            is_thinking = true;
+                        } else {
+                            console::set_display(DISPLAY_TYPE_REASONING);
+                            if (!is_thinking) {
+                                console::log("[Start thinking]\n");
+                            }
+                            is_thinking = true;
+                            console::log("%s", diff.reasoning_content_delta.c_str());
+                            console::flush();
                         }
-                        is_thinking = true;
-                        console::log("%s", diff.reasoning_content_delta.c_str());
-                        console::flush();
                     }
                 }
             }
@@ -672,9 +688,11 @@ int main(int argc, char ** argv) {
     ctx_cli.ctx_server.terminate();
     inference_thread.join();
 
-    // bump the log level to display timings
-    common_log_set_verbosity_thold(LOG_LEVEL_INFO);
-    llama_memory_breakdown_print(ctx_cli.ctx_server.get_llama_context());
+    if (!ctx_cli.quiet) {
+        // bump the log level to display timings
+        common_log_set_verbosity_thold(LOG_LEVEL_INFO);
+        llama_memory_breakdown_print(ctx_cli.ctx_server.get_llama_context());
+    }
 
     return 0;
 }
