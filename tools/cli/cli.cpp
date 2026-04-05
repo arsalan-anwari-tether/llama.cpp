@@ -156,8 +156,8 @@ struct cli_context {
                     if (!diff.content_delta.empty()) {
                         if (is_thinking) {
                             if (quiet) {
-                                // In quiet mode, print directly to stdout for script capture
-                                fputs("\n", stdout);
+                                // In quiet mode, print closing tag to stdout for script capture
+                                fputs("\n</think>\n\n", stdout);
                             } else {
                                 console::log("\n[End thinking]\n\n");
                                 console::set_display(DISPLAY_TYPE_RESET);
@@ -176,8 +176,13 @@ struct cli_context {
                     }
                     if (!diff.reasoning_content_delta.empty()) {
                         if (quiet) {
-                            // In quiet mode, skip reasoning display markers but still track state
+                            // In quiet mode, print reasoning content to stdout for script capture
+                            if (!is_thinking) {
+                                fputs("<think>\n", stdout);
+                            }
                             is_thinking = true;
+                            fputs(diff.reasoning_content_delta.c_str(), stdout);
+                            fflush(stdout);
                         } else {
                             console::set_display(DISPLAY_TYPE_REASONING);
                             if (!is_thinking) {
