@@ -20,6 +20,8 @@ For **`--tool=cli`**, the script always passes:
 | Flag | Purpose |
 |------|--------|
 | `-m <path>` | From `--input=` |
+| `-c <size>` | Context size (default: 4096 or `$CTX_SIZE`). Prevents OOM on mobile devices. |
+| `-ub <size>` | Micro-batch size (default: 256 or `$UBATCH_SIZE`). Reduces memory pressure. |
 | `--jinja` | Required so chat-template thinking / `reasoning-budget` apply (see note below) |
 | `--reasoning-budget -1` | If `--mode=think` (default): do not disable thinking in the template |
 | `--reasoning-budget 0` | If `--mode=no_think`: disable thinking in the template |
@@ -46,10 +48,21 @@ Only these may appear **before** the separator `--`:
 | `--input=PATH` | Yes | Path to the GGUF file. |
 | `--mode=think` or `no_think` | No | Default: `think`. Affects **`llama-cli` only** (`--reasoning-budget`). |
 | `--temp=FLOAT` | No | Forwarded as `--temp FLOAT` to **`llama-cli` only**. |
+| `--ctx-size=N` | No | Context size (default: `$CTX_SIZE` or 4096). Affects **`llama-cli` only**. |
+| `--ubatch-size=N` | No | Micro-batch size (default: `$UBATCH_SIZE` or 256). Affects **`llama-cli` only**. |
 | `--tool=cli` or `bench` | No | Default: `cli`. |
 | `-h` / `--help` | No | Print script usage (header + short option list). |
 
 Any other token before `--` is an error; the script suggests using `--` for `llama-cli` / `llama-bench` flags.
+
+## Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLAMA_CLI` | `build/bin/llama-cli` | Path to `llama-cli` binary |
+| `LLAMA_BENCH` | `build/bin/llama-bench` | Path to `llama-bench` binary |
+| `CTX_SIZE` | `4096` | Default context size for `llama-cli` |
+| `UBATCH_SIZE` | `256` | Default micro-batch size for `llama-cli` |
 
 ## Passing flags to `llama-cli` or `llama-bench` (Rust-style `--`)
 
@@ -71,7 +84,10 @@ Examples:
 # With llama-cli flags after --
 ./scripts/qwen3-llama-run.sh --input=model.gguf --mode=think --temp=0.6 -- -p "Hello" -n 128 -ngl 99
 
-# Benchmark (mode/temp ignored; forward bench flags after --)
+# Smaller context for memory-constrained devices (mobile, etc.)
+./scripts/qwen3-llama-run.sh --input=model.gguf --ctx-size=2048 --ubatch-size=128 -- -p "Hello"
+
+# Benchmark (mode/temp/ctx-size/ubatch-size ignored; forward bench flags after --)
 ./scripts/qwen3-llama-run.sh --input=model.gguf --tool=bench -- -ngl 99
 ```
 
@@ -80,7 +96,7 @@ Examples:
 For **`llama-cli`**, the executed command is equivalent to:
 
 ```bash
-llama-cli -m <input> --jinja --reasoning-budget <-1|0> [--temp …] <extra args after -->
+llama-cli -m <input> -c <ctx-size> -ub <ubatch-size> --jinja --reasoning-budget <-1|0> [--temp …] <extra args after -->
 ```
 
 For **`llama-bench`**:
@@ -90,6 +106,18 @@ llama-bench -m <input> <extra args after -->
 ```
 
 The script uses `set -x` before `exec`, so the shell prints the full command line before running it.
+
+## Memory considerations
+
+Qwen3 / Qwen3.5 models have large default context sizes (32K+ tokens). On mobile devices or systems with limited RAM, the default context size would cause out-of-memory crashes. The script uses conservative defaults (`-c 4096 -ub 256`) that work on most devices.
+
+For very constrained devices (e.g., 4GB RAM phones), reduce further:
+
+```bash
+./scripts/qwen3-llama-run.sh --input=model.gguf --ctx-size=2048 --ubatch-size=128 -- -p "Hello"
+# Or via environment:
+CTX_SIZE=2048 UBATCH_SIZE=128 ./scripts/qwen3-llama-run.sh --input=model.gguf -- -p "Hello"
+```
 
 ## See also
 

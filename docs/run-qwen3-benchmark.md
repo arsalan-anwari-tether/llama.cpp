@@ -66,20 +66,22 @@ The logic benchmark uses the same fixed prompt set for both modes, but it now ha
 - **Thinking**
 
 ```bash
---temp 0.5 --top-k 20 --top-p 0.9 --min-p 0 --repeat-penalty 1.10 --presence-penalty 0.3
+--temp 1.0 --top-k 20 --top-p 0.95 --min-p 0 --repeat-penalty 1.0 --presence-penalty 1.5
 ```
 
 - **Non-thinking**
 
 ```bash
---temp 0.2 --top-k 20 --top-p 0.9 --min-p 0 --repeat-penalty 1.05 --presence-penalty 0.0
+--temp 0.7 --top-k 20 --top-p 0.8 --min-p 0 --repeat-penalty 1.0 --presence-penalty 1.5
 ```
 
-The default generation limits are:
+The default generation and memory limits are:
 
 - `LOGIC_N_THINK=512`
 - `LOGIC_N_NO_THINK=512`
 - `LOGIC_TIMEOUT_SEC=300`
+- `LOGIC_CTX_SIZE=4096` — context size (prevents OOM on mobile/resource-constrained devices)
+- `LOGIC_UBATCH_SIZE=256` — micro-batch size (reduces memory pressure)
 
 Each logic question is wrapped with the shell `timeout` command. If a run exceeds `LOGIC_TIMEOUT_SEC`, the script terminates that `llama-cli` process, records the partial stdout that was produced so far, and then continues to the next question.
 
@@ -136,6 +138,12 @@ Run logic with a shorter timeout:
 LOGIC_TIMEOUT_SEC=120 ./scripts/run_qwen3_benchmark.sh --input-dir="$HOME/models/qwen3-gguf" --bench-mode=logic
 ```
 
+Run logic with smaller context size (for mobile devices with limited RAM):
+
+```bash
+LOGIC_CTX_SIZE=2048 LOGIC_UBATCH_SIZE=128 ./scripts/run_qwen3_benchmark.sh --input-dir="$HOME/models/qwen3-gguf" --bench-mode=logic
+```
+
 ## Running in the background (Termux and other environments)
 
 Long benchmark runs are often started in a shell session that you close. On Android **Termux**, the process may also be stopped when the device sleeps unless you keep the CPU awake.
@@ -182,6 +190,19 @@ For unattended jobs, combine with `nohup` and logging; release the lock when fin
 - `**nohup` / background `&**` — Survive closing the SSH or Termux terminal session (still subject to OS killing background apps under memory pressure).
 - **Wake lock** — Reduces the chance that the device suspends the process during long GPU/CPU runs.
 - **Log + `tail -f`** — Confirms which model is running and catches failures without opening each JSON file.
+
+### Memory considerations for mobile devices
+
+Qwen3 / Qwen3.5 models have large default context sizes (32K+ tokens). On mobile devices with limited RAM, allocating a large KV cache can cause out-of-memory crashes that terminate the SSH connection or Termux session entirely.
+
+The script uses sensible defaults (`LOGIC_CTX_SIZE=4096`, `LOGIC_UBATCH_SIZE=256`) that work on most mobile devices. If you still encounter OOM crashes:
+
+```bash
+# For very constrained devices (e.g., 4GB RAM phones)
+LOGIC_CTX_SIZE=2048 LOGIC_UBATCH_SIZE=128 ./scripts/run_qwen3_benchmark.sh --input-dir=... --bench-mode=logic
+```
+
+If the device crashes during "Loading model..." in the logic phase, reduce `LOGIC_CTX_SIZE` further or use a smaller quantized model.
 
 ## See also
 

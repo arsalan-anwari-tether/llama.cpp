@@ -30,6 +30,8 @@
 # Defaults (override with env):
 #   BENCH_P, BENCH_N, BENCH_R     llama-bench: prompt tokens, gen tokens, repetitions (defaults: 256, 64, 2)
 #   LOGIC_N_THINK, LOGIC_N_NO_THINK  llama-cli -n for think / no_think logic runs (defaults: 512, 512)
+#   LOGIC_CTX_SIZE                llama-cli context size for logic runs (default: 4096)
+#   LOGIC_UBATCH_SIZE             llama-cli micro-batch size for logic runs (default: 256)
 # llama-bench upstream defaults are -p 512 -n 128 -r 5; this script uses smaller values unless env overrides.
 
 set -euo pipefail
@@ -44,6 +46,8 @@ LLAMA_CLI="${LLAMA_CLI:-$ROOT/build/bin/llama-cli}"
 : "${LOGIC_N_THINK:=512}"
 : "${LOGIC_N_NO_THINK:=512}"
 : "${LOGIC_TIMEOUT_SEC:=300}"
+: "${LOGIC_CTX_SIZE:=4096}"
+: "${LOGIC_UBATCH_SIZE:=256}"
 
 DEFAULT_LOGIC_CLI_EXTRA_THINK="--temp 1.0 --top-k 20 --top-p 0.95 --min-p 0 --repeat-penalty 1.0 --presence-penalty 1.5"
 DEFAULT_LOGIC_CLI_EXTRA_NO_THINK="--temp 0.7 --top-k 20 --top-p 0.8 --min-p 0 --repeat-penalty 1.0 --presence-penalty 1.5"
@@ -219,7 +223,7 @@ run_logic_one() {
 
   local n_predict rbudget ngl logic_extra_value device_label timeout_note
   local logic_extra_arr=()
-  local cmd=("$LLAMA_CLI" -m "$model_path" --jinja)
+  local cmd=("$LLAMA_CLI" -m "$model_path" --jinja -c "$LOGIC_CTX_SIZE" -ub "$LOGIC_UBATCH_SIZE")
   if [[ "$mode" == "think" ]]; then
     n_predict=$LOGIC_N_THINK
     rbudget=-1
@@ -262,6 +266,8 @@ run_logic_one() {
 | **GPU layers** | \`-ngl ${ngl}\` |
 | **Thinking mode** | \`${mode}\` (\`--reasoning-budget ${rbudget}\`) |
 | **Max new tokens** | \`-n ${n_predict}\` |
+| **Context size** | \`-c ${LOGIC_CTX_SIZE}\` |
+| **Micro-batch size** | \`-ub ${LOGIC_UBATCH_SIZE}\` |
 | **Sampling flags** | \`${logic_extra_value}\` |
 | **Per-question timeout** | \`${LOGIC_TIMEOUT_SEC}s\` |
 | **Chat** | \`--jinja\`, \`--single-turn\` (each question: \`-p\` …) |
